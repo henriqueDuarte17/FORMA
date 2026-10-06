@@ -1,4 +1,4 @@
-import { EXERCISE_MAP, ICONS, findPreviousWorkout } from '../data.js';
+import { EXERCISE_MAP, ICONS, findMatchingExercise, findPreviousWorkout } from '../data.js';
 import { escapeHtml, formatDate, formatTime, elapsedSeconds, countCompletedSets, countWorkoutSets } from '../utils.js';
 
 export function renderWorkout({ app, state, errorBanner, startClock }) {
@@ -27,9 +27,7 @@ export function renderWorkout({ app, state, errorBanner, startClock }) {
   const detail = { ...(EXERCISE_MAP[exercise.id] || {}), ...exercise };
   const previous = findPreviousWorkout(state.history.filter((item) => !item.isDemo), exercise.id, exercise.name)
     || findPreviousWorkout(state.history, exercise.id, exercise.name);
-  const normalizedName = exercise.name.trim().toLocaleLowerCase('pt-PT').replace(/\s+/g, ' ');
-  const previousEntry = previous?.exercises.find((item) => item.id === exercise.id
-    || item.name?.trim().toLocaleLowerCase('pt-PT').replace(/\s+/g, ' ') === normalizedName);
+  const previousEntry = previous ? findMatchingExercise(previous, exercise.id, exercise.name) : null;
   const completeCount = exercise.sets.filter((set) => set.complete).length;
   const overallComplete = countCompletedSets(workout);
   const overallTotal = countWorkoutSets(workout);

@@ -1,5 +1,5 @@
 import { supabase, supabaseConfigured, supabaseConfigurationError } from './supabase.js';
-import { REST_SECONDS, PROGRAM, EXERCISE_MAP, createWorkout, loadState, persistState } from './data.js';
+import { REST_SECONDS, PROGRAM, EXERCISE_MAP, createWorkout, findMatchingExercise, loadState, persistState } from './data.js';
 import { countCompletedSets, dateFromKey, dateKey, elapsedSeconds, escapeHtml, formatTime } from './utils.js';
 import { renderHome } from './views/home.js';
 import { renderWorkout } from './views/workout.js';
@@ -16,7 +16,7 @@ const elements = {
   todayLabel: document.querySelector('#today-label')
 };
 
-let state = { history: [], activeWorkout: null, templates: [], schedule: [], storageError: false };
+let state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], storageError: false };
 let user = null;
 let activeTab = 'home';
 let editingTemplate = null;
@@ -163,14 +163,14 @@ function readTemplateDraft() {
   const exercises = [...form.querySelectorAll('[data-exercise-row]')].map((row) => {
     const select = row.querySelector('[data-exercise-id]');
     const selectedId = select.value;
-    const custom = selectedId === '__custom__';
-    const base = EXERCISE_MAP[selectedId];
+    const isNewCustom = selectedId === '__custom__';
+    const base = EXERCISE_MAP[selectedId] || state.exerciseCatalog.find((exercise) => exercise.id === selectedId);
     const customName = row.querySelector('[data-custom-name]')?.value.trim() || '';
     return {
-      id: custom ? (select.dataset.customId || `custom-${crypto.randomUUID()}`) : selectedId,
-      name: custom ? customName : base.name,
-      detail: custom ? 'Exercício personalizado' : base.detail,
-      icon: custom ? 'default' : base.icon,
+      id: isNewCustom ? (select.dataset.customId || `custom-${crypto.randomUUID()}`) : selectedId,
+      name: isNewCustom ? customName : base.name,
+      detail: isNewCustom ? 'Exercício personalizado' : base.detail,
+      icon: isNewCustom ? 'default' : base.icon,
       sets: Number(row.querySelector('[data-setting="sets"]').value),
       reps: Number(row.querySelector('[data-setting="reps"]').value),
       weight: Number(row.querySelector('[data-setting="weight"]').value)
@@ -212,6 +212,23 @@ async function saveTemplate() {
   const currentIndex = state.templates.findIndex((item) => item.id === template.id);
   if (currentIndex < 0) state.templates.push(template);
   else state.templates[currentIndex] = template;
+  const exerciseCatalog = state.exerciseCatalog || [];
+  template.exercises = template.exercises.map((exercise) => {
+    if (EXERCISE_MAP[exercise.id]) return exercise;
+    const normalizedName = exercise.name.trim().toLocaleLowerCase('pt-PT').replace(/\s+/g, ' ');
+    const existing = exerciseCatalog.find((item) =>
+      item.name.trim().toLocaleLowerCase('pt-PT').replace(/\s+/g, ' ') === normalizedName);
+    if (existing) return { ...exercise, id: existing.id };
+    const savedExercise = {
+      id: exercise.id,
+      name: exercise.name.trim().replace(/\s+/g, ' '),
+      detail: exercise.detail || 'Exercício personalizado',
+      icon: exercise.icon || 'default'
+    };
+    exerciseCatalog.push(savedExercise);
+    return { ...exercise, ...savedExercise };
+  });
+  state.exerciseCatalog = exerciseCatalog;
   editingTemplate = null;
   const saved = await saveState();
   render();
@@ -340,17 +357,14 @@ async function saveCurrentSet() {
     return;
   }
 
-  const normalizedName = exercise.name.trim().toLocaleLowerCase('pt-PT').replace(/\s+/g, ' ');
   const previousWorkout = state.history
     .filter((item) => !item.isDemo)
     .slice()
     .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .find((item) => item.exercises?.some((entry) =>
-      entry.id === exercise.id
-      || entry.name?.trim().toLocaleLowerCase('pt-PT').replace(/\s+/g, ' ') === normalizedName));
-  const previousExercise = previousWorkout?.exercises.find((entry) =>
-    entry.id === exercise.id
-    || entry.name?.trim().toLocaleLowerCase('pt-PT').replace(/\s+/g, ' ') === normalizedName);
+    .find((item) => findMatchingExercise(item, exercise.id, exercise.name));
+  const previousExercise = previousWorkout
+    ? findMatchingExercise(previousWorkout, exercise.id, exercise.name)
+    : null;
   const previousSets = previousExercise?.sets || [];
   const previousSet = previousSets[index] || previousSets[previousSets.length - 1];
   const improved = [];
@@ -489,7 +503,9 @@ elements.app.addEventListener('change', (event) => {
         row.detail = 'Exercício personalizado';
         row.icon = 'default';
       } else {
-        Object.assign(row, EXERCISE_MAP[event.target.value]);
+        const exercise = EXERCISE_MAP[event.target.value]
+          || state.exerciseCatalog.find((item) => item.id === event.target.value);
+        if (exercise) Object.assign(row, exercise);
       }
       editingTemplate = { ...draft, exercises: draft.exercises };
       render();
@@ -646,7 +662,7 @@ document.addEventListener('click', async (event) => {
           .delete()
           .eq('user_id', user.id);
         if (error) throw error;
-        state = { history: [], activeWorkout: null, templates: [], schedule: [], storageError: false };
+        state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], storageError: false };
         editingTemplate = null;
         activeTab = 'profile';
         render();
@@ -668,7 +684,7 @@ document.addEventListener('click', async (event) => {
           throw new Error(`A conta foi apagada, mas não foi possível limpar a sessão deste dispositivo: ${signOutError.message}`);
         }
         user = null;
-        state = { history: [], activeWorkout: null, templates: [], schedule: [], storageError: false };
+        state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], storageError: false };
         editingTemplate = null;
         activeTab = 'home';
         authMode = 'login';
@@ -693,7 +709,7 @@ document.addEventListener('click', async (event) => {
       return;
     }
     user = null;
-    state = { history: [], activeWorkout: null, templates: [], schedule: [], storageError: false };
+    state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], storageError: false };
     activeTab = 'home';
     authMode = 'login';
     authMessage = '';
@@ -734,7 +750,7 @@ if (supabase) {
   supabase.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_OUT' && user) {
       user = null;
-      state = { history: [], activeWorkout: null, templates: [], schedule: [], storageError: false };
+      state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], storageError: false };
       activeTab = 'home';
       authMode = 'login';
       authMessage = '';

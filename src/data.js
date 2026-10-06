@@ -9,6 +9,7 @@ export const PROGRAM = [
 ];
 
 export const EXERCISE_MAP = Object.fromEntries(PROGRAM.map((exercise) => [exercise.id, exercise]));
+const PROGRAM_IDS = new Set(PROGRAM.map((exercise) => exercise.id));
 
 export const ICONS = {
   legs: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4v6m12-6v6M4 10h16M6 10v8m12-8v8M4 18h4m8 0h4M8 7h8"/></svg>',
@@ -23,9 +24,29 @@ function normalizeState(savedState) {
     throw new Error('Os dados guardados na conta têm um formato inválido.');
   }
   const templates = Array.isArray(savedState.templates) ? savedState.templates : [createDefaultTemplate()];
+  const exerciseCatalog = new Map();
+  const addExercise = (exercise) => {
+    if (!exercise || PROGRAM_IDS.has(exercise.id) || typeof exercise.name !== 'string') return;
+    const name = exercise.name.trim().replace(/\s+/g, ' ');
+    if (!name) return;
+    const key = name.toLocaleLowerCase('pt-PT');
+    if (!exerciseCatalog.has(key)) {
+      exerciseCatalog.set(key, {
+        id: typeof exercise.id === 'string' && exercise.id ? exercise.id : `custom-${crypto.randomUUID()}`,
+        name,
+        detail: exercise.detail || 'Exercício personalizado',
+        icon: exercise.icon || 'default'
+      });
+    }
+  };
+  (Array.isArray(savedState.exerciseCatalog) ? savedState.exerciseCatalog : []).forEach(addExercise);
+  templates.forEach((template) => (template.exercises || []).forEach(addExercise));
+  (savedState.history || []).forEach((workout) => (workout.exercises || []).forEach(addExercise));
+  (savedState.activeWorkout?.exercises || []).forEach(addExercise);
   return {
     ...savedState,
     templates,
+    exerciseCatalog: [...exerciseCatalog.values()],
     schedule: normalizeWeeklySchedule(savedState.schedule, templates),
     storageError: false
   };
@@ -36,6 +57,7 @@ function createInitialState() {
     history: [],
     activeWorkout: null,
     templates: [],
+    exerciseCatalog: [],
     schedule: [],
     storageError: false
   };
@@ -92,6 +114,7 @@ export async function persistState(state, userId) {
         history: state.history,
         activeWorkout: state.activeWorkout,
         templates: state.templates,
+        exerciseCatalog: state.exerciseCatalog,
         schedule: state.schedule
       },
       updated_at: new Date().toISOString()
@@ -99,12 +122,20 @@ export async function persistState(state, userId) {
   if (error) throw error;
 }
 
+function normalizeExerciseName(name) {
+  return name?.trim().toLocaleLowerCase('pt-PT').replace(/\s+/g, ' ');
+}
+
+export function findMatchingExercise(workout, exerciseId, exerciseName) {
+  const normalizedName = normalizeExerciseName(exerciseName);
+  return workout.exercises?.find((exercise) =>
+    exercise.id === exerciseId
+    || (normalizedName && normalizeExerciseName(exercise.name) === normalizedName));
+}
+
 export function findPreviousWorkout(history, exerciseId, exerciseName) {
-  const normalizedName = exerciseName?.trim().toLocaleLowerCase('pt-PT').replace(/\s+/g, ' ');
   return history
-    .filter((workout) => (workout.exercises || []).some((exercise) =>
-      exercise.id === exerciseId
-      || (normalizedName && exercise.name?.trim().toLocaleLowerCase('pt-PT').replace(/\s+/g, ' ') === normalizedName)))
+    .filter((workout) => findMatchingExercise(workout, exerciseId, exerciseName))
     .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
 }
 
@@ -119,10 +150,10 @@ export function createDefaultTemplate() {
 export function createWorkout(history, template) {
   const realHistory = history.filter((workout) => !workout.isDemo);
   const exercises = template.exercises.map((exercise) => {
-    const normalizedName = exercise.name?.trim().toLocaleLowerCase();
-    const previous = findPreviousWorkout(realHistory, exercise.id, exercise.name)?.exercises
-      .find((item) => item.id === exercise.id
-        || (normalizedName && item.name?.trim().toLocaleLowerCase() === normalizedName));
+    const previousWorkout = findPreviousWorkout(realHistory, exercise.id, exercise.name);
+    const previous = previousWorkout
+      ? findMatchingExercise(previousWorkout, exercise.id, exercise.name)
+      : null;
     const previousLastSet = previous?.sets?.[previous.sets.length - 1];
     return {
       ...exercise,

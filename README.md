@@ -6,7 +6,7 @@ FORMA é uma aplicação web de registo de treinos, pensada primeiro para o tele
 
 - `index.html` — ponto de entrada, cabeçalho e navegação.
 - `src/app.js` — inicialização, eventos e fluxo entre ecrãs.
-- `src/data.js` — plano, dados de exemplo e leitura/escrita dos dados privados no Supabase.
+- `src/data.js` — catálogo de exercícios, dados do treino e leitura/escrita dos dados privados no Supabase.
 - `src/supabase.js` — cliente Supabase configurado através de variáveis de ambiente.
 - `src/views/auth.js` — criação de conta e início de sessão.
 - `src/utils.js` — formatação de valores e cálculos partilhados.
@@ -40,10 +40,11 @@ Ativa Email/Password em **Authentication → Providers** no Supabase. Se a confi
 
 - Início e continuação de um treino de corpo inteiro com quatro exercícios.
 - Criação, edição e remoção de predefinições com exercícios do catálogo ou exercícios personalizados.
+- Catálogo pessoal de exercícios: ao guardar um treino, os exercícios personalizados ficam disponíveis nas predefinições seguintes.
 - Séries, repetições alvo e pesos iniciais configuráveis em cada exercício; iniciar uma sessão a partir da predefinição escolhida.
 - Calendário do histórico com detalhe das séries, pesos e repetições por dia.
 - Planeamento semanal recorrente, com uma predefinição por dia e início rápido do treino do dia.
-- Sugestão automática do peso e das repetições do registo anterior de cada exercício.
+- Sugestão automática do peso e das repetições do registo anterior do mesmo exercício, mesmo quando pertence a outra predefinição; a comparação normaliza maiúsculas, minúsculas e espaços no nome.
 - Recuperação de um treino em curso após atualizar a página ou fechar e reabrir o separador.
 - Visualização do exercício atual, objetivo de séries/repetições e registos da sessão anterior.
 - Campos de peso e repetições pré-preenchidos com os valores da predefinição escolhida e validados em cada série.
