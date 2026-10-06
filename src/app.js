@@ -1,3 +1,4 @@
+import { supabase } from './supabase.js';
 import { REST_SECONDS, PROGRAM, EXERCISE_MAP, createWorkout, loadState, persistState } from './data.js';
 import { countCompletedSets, dateFromKey, dateKey, elapsedSeconds, escapeHtml, formatTime } from './utils.js';
 import { renderHome } from './views/home.js';
@@ -14,11 +15,12 @@ const elements = {
   todayLabel: document.querySelector('#today-label')
 };
 
-const state = loadState();
+// Variável global de estado (inicialmente vazia, preenchida após carregar do Supabase)
+let state = { history: [], activeWorkout: null, templates: [], schedule: [], storageError: false };
 let activeTab = 'home';
 let editingTemplate = null;
-let selectedHistoryDate = state.history[0] ? dateKey(new Date(state.history[0].date)) : dateKey();
-let historyMonth = new Date(dateFromKey(selectedHistoryDate).getFullYear(), dateFromKey(selectedHistoryDate).getMonth(), 1, 12);
+let selectedHistoryDate = dateKey();
+let historyMonth = new Date();
 let toastTimeout;
 let clockInterval;
 
@@ -78,38 +80,39 @@ function selectCalendarDate(key) {
   render();
 }
 
-function saveWeeklySchedule(form) {
+async function saveWeeklySchedule(form) {
   const selections = Array.from({ length: 7 }, (_, weekday) => ({
     id: `schedule-${weekday}`,
     weekday,
     templateId: form.elements.namedItem(`weekday-${weekday}`).value
   })).filter((item) => item.templateId);
+  
   if (selections.some((item) => !state.templates.some((template) => template.id === item.templateId))) {
     showToast('Uma das predefinições selecionadas já não está disponível.');
     return;
   }
   state.schedule = selections;
-  const saved = saveState();
+  const saved = await saveState();
   render();
   if (saved) showToast('A tua semana de treinos foi guardada.');
 }
 
-function saveState() {
+async function saveState() {
   try {
-    persistState(state);
+    await persistState(state);
     state.storageError = false;
     return true;
   } catch (error) {
     console.error('Não foi possível guardar o treino.', error);
     state.storageError = true;
-    showToast('Não foi possível guardar. Verifica o espaço disponível no dispositivo.');
+    showToast('Não foi possível guardar na nuvem.');
     return false;
   }
 }
 
 function errorBanner() {
   return state.storageError
-    ? '<div class="error-banner" role="alert">O armazenamento não está disponível neste momento. Os novos dados podem não ficar guardados. <button data-action="retry-save">Tentar novamente</button></div>'
+    ? '<div class="error-banner" role="alert">O acesso ao Supabase falhou temporariamente. <button data-action="retry-save">Tentar novamente</button></div>'
     : '';
 }
 
@@ -165,7 +168,7 @@ function makeBlankTemplate() {
   return { id: null, name: '', exercises: [{ ...PROGRAM[0] }] };
 }
 
-function saveTemplate() {
+async function saveTemplate() {
   const form = elements.app.querySelector('[data-template-form]');
   if (!form.reportValidity()) return;
   const template = readTemplateDraft();
@@ -195,7 +198,7 @@ function saveTemplate() {
   if (currentIndex < 0) state.templates.push(template);
   else state.templates[currentIndex] = template;
   editingTemplate = null;
-  saveState();
+  await saveState();
   render();
   showToast('Predefinição guardada.');
 }
@@ -237,7 +240,7 @@ function showModal(title, message, confirmLabel, onConfirm) {
   });
 }
 
-function finishWorkout() {
+async function finishWorkout() {
   const workout = state.activeWorkout;
   if (!workout) return;
 
@@ -255,7 +258,7 @@ function finishWorkout() {
 
   if (completedCount === 0) {
     state.activeWorkout = null;
-    saveState();
+    await saveState();
     activeTab = 'home';
     render();
     showToast('Treino cancelado. Ainda não havia séries registadas.');
@@ -273,12 +276,12 @@ function finishWorkout() {
   });
   workout.finished = true;
   workout.restEndsAt = null;
-  saveState();
+  await saveState();
   activeTab = 'workout';
   render();
 }
 
-function saveCurrentSet() {
+async function saveCurrentSet() {
   const workout = state.activeWorkout;
   const exercise = activeExercise();
   if (!workout || !exercise) return;
@@ -327,7 +330,7 @@ function saveCurrentSet() {
     && index === exercise.sets.length - 1;
   if (!lastSetOfWorkout) workout.restEndsAt = Date.now() + REST_SECONDS * 1000;
 
-  const saved = saveState();
+  const saved = await saveState();
   render();
   if (!saved) return;
   if (improved.length) {
@@ -337,7 +340,7 @@ function saveCurrentSet() {
   }
 }
 
-function advanceWorkout() {
+async function advanceWorkout() {
   const workout = state.activeWorkout;
   if (!workout) return;
 
@@ -350,21 +353,21 @@ function advanceWorkout() {
   workout.restEndsAt = null;
   if (workout.exerciseIndex < workout.exercises.length - 1) {
     workout.exerciseIndex += 1;
-    saveState();
+    await saveState();
     render();
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
-  finishWorkout();
+  await finishWorkout();
 }
 
-function leaveRest(skipRest) {
+async function leaveRest(skipRest) {
   if (!state.activeWorkout) return;
   const exerciseIsDone = activeExercise().sets.every((set) => set.complete);
-  if (exerciseIsDone) advanceWorkout();
+  if (exerciseIsDone) await advanceWorkout();
   else {
     state.activeWorkout.restEndsAt = null;
-    saveState();
+    await saveState();
     render();
   }
   if (skipRest) {
@@ -372,13 +375,13 @@ function leaveRest(skipRest) {
   }
 }
 
-elements.app.addEventListener('input', (event) => {
+elements.app.addEventListener('input', async (event) => {
   const input = event.target.closest('[data-field]');
   if (!input || !state.activeWorkout) return;
   const set = activeExercise()?.sets[Number(input.dataset.index)];
   if (!set || set.complete) return;
   set[input.dataset.field] = input.value;
-  saveState();
+  await saveState();
 });
 
 elements.app.addEventListener('change', (event) => {
@@ -411,7 +414,7 @@ elements.app.addEventListener('submit', (event) => {
   }
 });
 
-document.addEventListener('click', (event) => {
+document.addEventListener('click', async (event) => {
   const calendarDay = event.target.closest('[data-calendar-date]');
   if (calendarDay) {
     selectCalendarDate(calendarDay.dataset.calendarDate);
@@ -492,10 +495,10 @@ document.addEventListener('click', (event) => {
     }
   } else if (action === 'delete-template') {
     const template = state.templates.find((item) => item.id === actionElement.dataset.templateId);
-    if (template) showModal('Apagar predefinição?', `“${template.name}” e os respetivos agendamentos serão removidos. Os treinos já guardados não serão afetados.`, 'Apagar treino', () => {
+    if (template) showModal('Apagar predefinição?', `“${template.name}” e os respetivos agendamentos serão removidos. Os treinos já guardados não serão afetados.`, 'Apagar treino', async () => {
       state.templates = state.templates.filter((item) => item.id !== template.id);
       state.schedule = state.schedule.filter((item) => item.templateId !== template.id);
-      saveState();
+      await saveState();
       render();
       showToast('Predefinição apagada.');
     });
@@ -504,28 +507,28 @@ document.addEventListener('click', (event) => {
     render();
   } else if (action === 'workout-primary') {
     const exercise = activeExercise();
-    if (exercise?.sets.every((set) => set.complete)) advanceWorkout();
-    else saveCurrentSet();
+    if (exercise?.sets.every((set) => set.complete)) await advanceWorkout();
+    else await saveCurrentSet();
   } else if (action === 'continue-after-rest' || action === 'skip-rest') {
-    leaveRest(action === 'skip-rest');
+    await leaveRest(action === 'skip-rest');
   } else if (action === 'end-early') {
     showModal('Terminar este treino?', 'As séries que já concluíste serão guardadas no histórico. Podes retomar o treino mais tarde apenas se escolheres voltar.', 'Guardar e terminar', finishWorkout);
   } else if (action === 'save-finished') {
     state.activeWorkout = null;
-    saveState();
+    await saveState();
     activeTab = 'home';
     render();
     showToast('Treino guardado. Cada sessão conta.');
   } else if (action === 'clear-demo') {
-    showModal('Remover dados de exemplo?', 'As sessões de demonstração serão removidas deste dispositivo. Os teus treinos registados ficam intactos.', 'Remover exemplos', () => {
+    showModal('Remover dados de exemplo?', 'As sessões de demonstração serão removidas deste dispositivo. Os teus treinos registados ficam intactos.', 'Remover exemplos', async () => {
       state.history = state.history.filter((workout) => !workout.isDemo);
-      saveState();
+      await saveState();
       activeTab = 'profile';
       render();
       showToast('Dados de exemplo removidos.');
     });
   } else if (action === 'retry-save') {
-    saveState();
+    await saveState();
     render();
     if (!state.storageError) showToast('Armazenamento disponível.');
   } else if (action === 'dismiss-modal') {
@@ -533,8 +536,27 @@ document.addEventListener('click', (event) => {
   }
 });
 
-if (state.activeWorkout?.restEndsAt && state.activeWorkout.restEndsAt <= Date.now()) {
-  state.activeWorkout.restEndsAt = null;
-  saveState();
+// Função principal de arranque assíncrona
+async function initApp() {
+  try {
+    state = await loadState();
+    if (state.activeWorkout?.restEndsAt && state.activeWorkout.restEndsAt <= Date.now()) {
+      state.activeWorkout.restEndsAt = null;
+      await saveState();
+    }
+    
+    // Define a data inicial do histórico se houver dados
+    if (state.history[0]) {
+      selectedHistoryDate = dateKey(new Date(state.history[0].date));
+      historyMonth = new Date(dateFromKey(selectedHistoryDate).getFullYear(), dateFromKey(selectedHistoryDate).getMonth(), 1, 12);
+    }
+    
+    render();
+  } catch (error) {
+    console.error('Erro ao inicializar a aplicação com o Supabase:', error);
+    showToast('Erro ao ligar à base de dados.');
+  }
 }
-render();
+
+// Iniciar a aplicação
+initApp();
