@@ -1,0 +1,38 @@
+@media (min-width: 740px) {
+  .app-shell { padding-bottom: 28px; }
+  .bottom-nav { position: static; min-height: 66px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .nav-item { min-width: 110px; grid-auto-flow: column; gap: 8px; font-size: 12px; }
+  .toast { bottom: 26px; }
+  .workout-sticky { bottom: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: #141512f2; backdrop-filter: blur(14px); }
+  .modal-backdrop { align-items: center; }
+}
+@media (max-width: 680px) {
+  .topbar { height: 62px; padding: 0 18px; }
+  .main-content { padding: 21px 16px 36px; }
+  .bottom-nav { gap: 0; }
+  .nav-item { min-width: 0; flex: 1; }
+  .hero { min-height: 238px; padding: 26px 23px; }
+  .hero-copy { max-width: 340px; }
+  .hero h1 { max-width: 300px; font-size: 37px; }
+  .overview-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat-card { min-height: 112px; padding: 16px; }
+  .overview-grid .stat-card:first-child { grid-column: span 2; }
+  .workout-summary { align-items: flex-start; flex-wrap: wrap; padding: 17px; }
+  .mini-progress { width: 100%; }
+  .workout-header h1 { font-size: 22px; }
+  .progress-title-row { align-items: flex-start; flex-direction: column; }
+  .progress-stats { gap: 8px; }
+  .progress-stats .stat-card { padding: 13px 10px; }
+  .progress-stats .stat-value { font-size: 17px; }
+  .today-label { font-size: 10px; }
+}
+@media (max-width: 370px) {
+  .set-row { grid-template-columns: 32px 1fr 1fr 28px; gap: 6px; padding: 8px 7px; }
+  .set-field input { padding: 0 5px; font-size: 13px; }
+  .set-number { width: 27px; height: 27px; }
+  .exercise-heading h2 { font-size: 19px; }
+  .hero h1 { font-size: 33px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
