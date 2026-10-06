@@ -1,5 +1,4 @@
 import { supabase } from './supabase.js';
-export const STORAGE_KEY = 'forma-training-v1';
 export const REST_SECONDS = 90;
 
 export const PROGRAM = [
@@ -49,26 +48,46 @@ export function createDemoHistory() {
   ];
 }
 
-export function loadState() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed && Array.isArray(parsed.history)) {
-        const templates = Array.isArray(parsed.templates) ? parsed.templates : [createDefaultTemplate()];
-        return {
-          ...parsed,
-          templates,
-          schedule: normalizeWeeklySchedule(parsed.schedule, templates),
-          storageError: false
-        };
-      }
-    }
-    return { history: createDemoHistory(), activeWorkout: null, templates: [createDefaultTemplate()], schedule: [], storageError: false };
-  } catch (error) {
-    console.error('Não foi possível ler os dados guardados.', error);
-    return { history: createDemoHistory(), activeWorkout: null, templates: [createDefaultTemplate()], schedule: [], storageError: true };
+function normalizeState(savedState) {
+  if (!savedState || !Array.isArray(savedState.history)) {
+    throw new Error('Os dados guardados na conta têm um formato inválido.');
   }
+  const templates = Array.isArray(savedState.templates) ? savedState.templates : [createDefaultTemplate()];
+  return {
+    ...savedState,
+    templates,
+    schedule: normalizeWeeklySchedule(savedState.schedule, templates),
+    storageError: false
+  };
+}
+
+function createInitialState() {
+  return {
+    history: createDemoHistory(),
+    activeWorkout: null,
+    templates: [createDefaultTemplate()],
+    schedule: [],
+    storageError: false
+  };
+}
+
+export async function loadState(userId) {
+  if (!supabase || !userId) throw new Error('É necessário iniciar sessão para carregar os treinos.');
+
+  const { data, error } = await supabase
+    .from('user_training_state')
+    .select('state')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (data) return normalizeState(data.state);
+
+  const legacy = localStorage.getItem('forma-training-v1');
+  const initialState = legacy ? normalizeState(JSON.parse(legacy)) : createInitialState();
+  await persistState(initialState, userId);
+  if (legacy) localStorage.removeItem('forma-training-v1');
+  return initialState;
 }
 
 function normalizeWeeklySchedule(schedule, templates) {
@@ -93,13 +112,21 @@ function normalizeWeeklySchedule(schedule, templates) {
   return [...byWeekday.values()].sort((a, b) => a.weekday - b.weekday);
 }
 
-export function persistState(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    history: state.history,
-    activeWorkout: state.activeWorkout,
-    templates: state.templates,
-    schedule: state.schedule
-  }));
+export async function persistState(state, userId) {
+  if (!supabase || !userId) throw new Error('É necessário iniciar sessão para guardar os treinos.');
+  const { error } = await supabase
+    .from('user_training_state')
+    .upsert({
+      user_id: userId,
+      state: {
+        history: state.history,
+        activeWorkout: state.activeWorkout,
+        templates: state.templates,
+        schedule: state.schedule
+      },
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+  if (error) throw error;
 }
 
 export function findPreviousWorkout(history, exerciseId, exerciseName) {

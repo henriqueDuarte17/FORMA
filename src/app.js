@@ -1,4 +1,4 @@
-import { supabase } from './supabase.js';
+import { supabase, supabaseConfigured, supabaseConfigurationError } from './supabase.js';
 import { REST_SECONDS, PROGRAM, EXERCISE_MAP, createWorkout, loadState, persistState } from './data.js';
 import { countCompletedSets, dateFromKey, dateKey, elapsedSeconds, escapeHtml, formatTime } from './utils.js';
 import { renderHome } from './views/home.js';
@@ -7,6 +7,7 @@ import { renderProgress } from './views/progress.js';
 import { renderProfile } from './views/profile.js';
 import { renderTemplates } from './views/templates.js';
 import { renderSchedule } from './views/schedule.js';
+import { renderAuth } from './views/auth.js';
 
 const elements = {
   app: document.querySelector('#app'),
@@ -15,12 +16,17 @@ const elements = {
   todayLabel: document.querySelector('#today-label')
 };
 
-// Variável global de estado (inicialmente vazia, preenchida após carregar do Supabase)
 let state = { history: [], activeWorkout: null, templates: [], schedule: [], storageError: false };
+let user = null;
 let activeTab = 'home';
 let editingTemplate = null;
 let selectedHistoryDate = dateKey();
 let historyMonth = new Date();
+let authMode = 'login';
+let authMessage = '';
+let authMessageType = 'status';
+let authSubmitting = false;
+let persistenceQueue = Promise.resolve();
 let toastTimeout;
 let clockInterval;
 
@@ -40,7 +46,7 @@ function showToast(message, kind = '') {
   }, kind === 'progress' ? 3600 : 2600);
 }
 
-function startTemplate(templateId) {
+async function startTemplate(templateId) {
   const template = state.templates.find((item) => item.id === templateId);
   if (!template) {
     showToast('Este treino já não está disponível.');
@@ -51,7 +57,7 @@ function startTemplate(templateId) {
     return;
   }
   state.activeWorkout = createWorkout(state.history, template);
-  saveState();
+  await saveState();
   activeTab = 'workout';
   render();
 }
@@ -98,8 +104,17 @@ async function saveWeeklySchedule(form) {
 }
 
 async function saveState() {
+  if (!user) {
+    state.storageError = true;
+    showToast('Inicia sessão para guardar os teus treinos.');
+    return false;
+  }
+  const snapshot = structuredClone(state);
+  const userId = user.id;
+  const pendingSave = persistenceQueue.then(() => persistState(snapshot, userId));
+  persistenceQueue = pendingSave.catch(() => {});
   try {
-    await persistState(state);
+    await pendingSave;
     state.storageError = false;
     return true;
   } catch (error) {
@@ -198,12 +213,32 @@ async function saveTemplate() {
   if (currentIndex < 0) state.templates.push(template);
   else state.templates[currentIndex] = template;
   editingTemplate = null;
-  await saveState();
+  const saved = await saveState();
   render();
-  showToast('Predefinição guardada.');
+  if (saved) showToast('Predefinição guardada.');
 }
 
 function render() {
+  const navigation = document.querySelector('.bottom-nav');
+  document.querySelector('.topbar-right').hidden = !user;
+  navigation.hidden = !user;
+  if (!user) {
+    clearInterval(clockInterval);
+    renderAuth({
+      app: elements.app,
+      mode: authMode,
+      configured: supabaseConfigured,
+      configurationError: supabaseConfigurationError,
+      message: authMessage,
+      messageType: authMessageType,
+      submitting: authSubmitting
+    });
+    return;
+  }
+  const avatar = document.querySelector('.avatar-button');
+  avatar.textContent = user.email?.trim().charAt(0).toLocaleUpperCase('pt-PT') || 'U';
+  avatar.setAttribute('aria-label', `Conta de ${user.email || 'utilizador'}`);
+
   document.querySelectorAll('.nav-item').forEach((button) => {
     const active = button.dataset.action === activeTab
       || (activeTab === 'workout' && button.dataset.action === 'home')
@@ -213,7 +248,7 @@ function render() {
     else button.removeAttribute('aria-current');
   });
 
-  const context = { app: elements.app, state, errorBanner, startClock };
+  const context = { app: elements.app, state, errorBanner, startClock, user };
   if (activeTab === 'workout' && state.activeWorkout) renderWorkout(context);
   else if (activeTab === 'progress') renderProgress({ ...context, selectedHistoryDate, historyMonth });
   else if (activeTab === 'templates') renderTemplates({ ...context, editingTemplate });
@@ -375,6 +410,64 @@ async function leaveRest(skipRest) {
   }
 }
 
+async function activateUser(nextUser) {
+  const nextState = await loadState(nextUser.id);
+  state = nextState;
+  user = nextUser;
+  authMessage = '';
+  authMessageType = 'status';
+  authMode = 'login';
+  activeTab = 'home';
+  if (state.history[0]) {
+    selectedHistoryDate = dateKey(new Date(state.history[0].date));
+    const selectedDate = dateFromKey(selectedHistoryDate);
+    historyMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1, 12);
+  }
+  render();
+}
+
+async function submitAuth(form) {
+  if (!supabase) {
+    authMessage = supabaseConfigurationError || 'A ligação ao Supabase não está configurada.';
+    authMessageType = 'error';
+    render();
+    return;
+  }
+  const mode = authMode;
+  const email = form.elements.namedItem('email').value.trim();
+  const password = form.elements.namedItem('password').value;
+  authSubmitting = true;
+  authMessage = '';
+  authMessageType = 'status';
+  render();
+  try {
+    if (mode === 'signup') {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      if (data.session && data.user) {
+        await activateUser(data.user);
+      } else {
+        authMessage = 'Conta criada. Confirma o endereço através do email que te enviámos e depois inicia sessão.';
+        authMessageType = 'status';
+        authMode = 'login';
+      }
+    } else {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      await activateUser(data.user);
+    }
+  } catch (error) {
+    console.error('Não foi possível autenticar a conta.', error);
+    authMessage = error.message
+      ? `Não foi possível ${mode === 'signup' ? 'criar a conta' : 'iniciar sessão'}: ${error.message}`
+      : 'Não foi possível autenticar. Verifica o email, a palavra-passe e a configuração do Supabase.';
+    authMessageType = 'error';
+  } finally {
+    authSubmitting = false;
+    if (!user) render();
+  }
+}
+
 elements.app.addEventListener('input', async (event) => {
   const input = event.target.closest('[data-field]');
   if (!input || !state.activeWorkout) return;
@@ -404,8 +497,11 @@ elements.app.addEventListener('change', (event) => {
   }
 });
 
-elements.app.addEventListener('submit', (event) => {
-  if (event.target.matches('[data-template-form]')) {
+elements.app.addEventListener('submit', async (event) => {
+  if (event.target.matches('[data-auth-form]')) {
+    event.preventDefault();
+    await submitAuth(event.target);
+  } else if (event.target.matches('[data-template-form]')) {
     event.preventDefault();
     saveTemplate();
   } else if (event.target.matches('[data-schedule-form]')) {
@@ -424,7 +520,12 @@ document.addEventListener('click', async (event) => {
   if (!actionElement) return;
 
   const action = actionElement.dataset.action;
-  if (action === 'home') {
+  if (action === 'auth-mode') {
+    authMode = authMode === 'login' ? 'signup' : 'login';
+    authMessage = '';
+    authMessageType = 'status';
+    render();
+  } else if (action === 'home') {
     activeTab = 'home';
     render();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -447,14 +548,14 @@ document.addEventListener('click', async (event) => {
     activeTab = 'templates';
     render();
   } else if (action === 'start-template') {
-    startTemplate(actionElement.dataset.templateId);
+    await startTemplate(actionElement.dataset.templateId);
   } else if (action === 'start-scheduled') {
     const scheduled = state.schedule.find((item) => item.id === actionElement.dataset.scheduleId);
     if (!scheduled) {
       showToast('Este treino já não está na agenda.');
       return;
     }
-    startTemplate(scheduled.templateId);
+    await startTemplate(scheduled.templateId);
   } else if (action === 'calendar-previous') {
     moveCalendarMonth(-1);
   } else if (action === 'calendar-next') {
@@ -498,9 +599,9 @@ document.addEventListener('click', async (event) => {
     if (template) showModal('Apagar predefinição?', `“${template.name}” e os respetivos agendamentos serão removidos. Os treinos já guardados não serão afetados.`, 'Apagar treino', async () => {
       state.templates = state.templates.filter((item) => item.id !== template.id);
       state.schedule = state.schedule.filter((item) => item.templateId !== template.id);
-      await saveState();
+      const saved = await saveState();
       render();
-      showToast('Predefinição apagada.');
+      if (saved) showToast('Predefinição apagada.');
     });
   } else if (action === 'resume-workout') {
     activeTab = 'workout';
@@ -514,23 +615,44 @@ document.addEventListener('click', async (event) => {
   } else if (action === 'end-early') {
     showModal('Terminar este treino?', 'As séries que já concluíste serão guardadas no histórico. Podes retomar o treino mais tarde apenas se escolheres voltar.', 'Guardar e terminar', finishWorkout);
   } else if (action === 'save-finished') {
+    const finishedWorkout = state.activeWorkout;
     state.activeWorkout = null;
-    await saveState();
+    const saved = await saveState();
+    if (!saved) {
+      state.activeWorkout = finishedWorkout;
+      render();
+      return;
+    }
     activeTab = 'home';
     render();
     showToast('Treino guardado. Cada sessão conta.');
   } else if (action === 'clear-demo') {
-    showModal('Remover dados de exemplo?', 'As sessões de demonstração serão removidas deste dispositivo. Os teus treinos registados ficam intactos.', 'Remover exemplos', async () => {
+    showModal('Remover dados de exemplo?', 'As sessões de demonstração serão removidas da tua conta. Os teus treinos registados ficam intactos.', 'Remover exemplos', async () => {
       state.history = state.history.filter((workout) => !workout.isDemo);
-      await saveState();
+      const saved = await saveState();
       activeTab = 'profile';
       render();
-      showToast('Dados de exemplo removidos.');
+      if (saved) showToast('Dados de exemplo removidos.');
     });
   } else if (action === 'retry-save') {
     await saveState();
     render();
-    if (!state.storageError) showToast('Armazenamento disponível.');
+    if (!state.storageError) showToast('Ligação ao Supabase disponível.');
+  } else if (action === 'sign-out') {
+    if (!supabase) return;
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Não foi possível terminar a sessão.', error);
+      showToast('Não foi possível terminar a sessão. Tenta novamente.');
+      return;
+    }
+    user = null;
+    state = { history: [], activeWorkout: null, templates: [], schedule: [], storageError: false };
+    activeTab = 'home';
+    authMode = 'login';
+    authMessage = '';
+    authMessageType = 'status';
+    render();
   } else if (action === 'dismiss-modal') {
     elements.modalRoot.innerHTML = '';
   }
@@ -538,24 +660,42 @@ document.addEventListener('click', async (event) => {
 
 // Função principal de arranque assíncrona
 async function initApp() {
+  if (!supabaseConfigured || !supabase) {
+    render();
+    return;
+  }
   try {
-    state = await loadState();
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    if (!data.session?.user) {
+      render();
+      return;
+    }
+    await activateUser(data.session.user);
     if (state.activeWorkout?.restEndsAt && state.activeWorkout.restEndsAt <= Date.now()) {
       state.activeWorkout.restEndsAt = null;
       await saveState();
     }
-    
-    // Define a data inicial do histórico se houver dados
-    if (state.history[0]) {
-      selectedHistoryDate = dateKey(new Date(state.history[0].date));
-      historyMonth = new Date(dateFromKey(selectedHistoryDate).getFullYear(), dateFromKey(selectedHistoryDate).getMonth(), 1, 12);
-    }
-    
-    render();
   } catch (error) {
     console.error('Erro ao inicializar a aplicação com o Supabase:', error);
-    showToast('Erro ao ligar à base de dados.');
+    authMessage = `Não foi possível ligar ao Supabase: ${error.message}`;
+    authMessageType = 'error';
+    render();
   }
+}
+
+if (supabase) {
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT' && user) {
+      user = null;
+      state = { history: [], activeWorkout: null, templates: [], schedule: [], storageError: false };
+      activeTab = 'home';
+      authMode = 'login';
+      authMessage = '';
+      authMessageType = 'status';
+      render();
+    }
+  });
 }
 
 // Iniciar a aplicação

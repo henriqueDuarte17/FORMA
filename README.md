@@ -1,12 +1,14 @@
 # FORMA
 
-FORMA é uma aplicação web de registo de treinos, pensada primeiro para o telemóvel. O MVP funciona inteiramente no navegador e não requer conta nem serviços externos.
+FORMA é uma aplicação web de registo de treinos, pensada primeiro para o telemóvel. É necessária uma conta para guardar e sincronizar os treinos na tua instância Supabase.
 
 ## Estrutura
 
 - `index.html` — ponto de entrada, cabeçalho e navegação.
 - `src/app.js` — inicialização, eventos e fluxo entre ecrãs.
-- `src/data.js` — plano, dados de exemplo e leitura/escrita do armazenamento local.
+- `src/data.js` — plano, dados de exemplo e leitura/escrita dos dados privados no Supabase.
+- `src/supabase.js` — cliente Supabase configurado através de variáveis de ambiente.
+- `src/views/auth.js` — criação de conta e início de sessão.
 - `src/utils.js` — formatação de valores e cálculos partilhados.
 - `src/views/` — um módulo por ecrã: início, treino, evolução, agenda, predefinições e perfil.
 - `src/views/calendar.js` — calendário mensal reutilizado no histórico e na agenda.
@@ -18,15 +20,19 @@ FORMA é uma aplicação web de registo de treinos, pensada primeiro para o tele
 ## Tecnologias
 
 - HTML semântico, CSS e JavaScript nativo (ES2020+).
-- `localStorage` para guardar treinos neste dispositivo.
+- Supabase Auth para contas por email e palavra-passe.
+- Supabase Database com políticas RLS para separar e proteger os dados de cada conta.
 - SVG para ícones, sem bibliotecas de interface.
 - Google Fonts (DM Sans e Manrope) como melhoria tipográfica opcional; o sistema usa tipos alternativos se estiver offline.
 
 ## Executar
 
-Como o projeto usa módulos JavaScript nativos, abre-o através de um servidor HTTP local, em vez de abrir o ficheiro diretamente como `file://`. No VS Code, instala/inicia a extensão Live Server e abre `index.html`; em alternativa, usa qualquer servidor estático local. Não é necessário instalar dependências nem compilar.
+1. Instala as dependências com `npm install`.
+2. Copia `.env.example` para `.env.local` e preenche a URL do projeto Supabase e a chave pública `anon`/`publishable` (nunca uses uma `service_role` no browser).
+3. Executa o SQL de `supabase/schema.sql` no SQL Editor do teu projeto Supabase.
+4. Inicia a aplicação com `npm run dev` e abre o endereço local apresentado pelo Vite.
 
-Os dados de exemplo são criados na primeira utilização e aparecem identificados como exemplos. Em **perfil**, podes removê-los sem afetar os treinos que registares. Os teus dados ficam apenas no armazenamento local desse navegador e dispositivo.
+Ativa Email/Password em **Authentication → Providers** no Supabase. Se a confirmação de email estiver ligada, confirma o endereço antes de iniciar sessão. Os dados locais existentes são migrados para a primeira conta que iniciar sessão neste navegador, apenas quando essa conta ainda não tem dados remotos.
 
 ## O que está implementado
 
@@ -43,8 +49,9 @@ Os dados de exemplo são criados na primeira utilização e aparecem identificad
 - Conclusão, resumo e histórico persistente dos treinos.
 - Resumo final com exercícios realizados e duração, sem métricas agregadas de séries ou carga.
 - Feedback visual de evolução ao superar a carga ou as repetições da última sessão real do mesmo exercício.
+- Registo e início de sessão por email e palavra-passe, com sincronização da conta e separação dos dados por utilizador.
 - Estados vazios, feedback de sucesso/erro, confirmação de término e layout responsivo com navegação adaptada a uma mão.
 
 ## Preparado para a próxima fase
 
-A próxima fase pode acrescentar notificações de lembrete, uma biblioteca de exercícios reutilizável entre predefinições, autenticação e sincronização remota. As predefinições, plano semanal e histórico ficam guardados no navegador local, sem conta ou partilha entre dispositivos. Agendamentos guardados anteriormente por data são convertidos automaticamente para o dia da semana correspondente.
+A próxima fase pode acrescentar notificações de lembrete e uma biblioteca de exercícios reutilizável entre predefinições. As predefinições, plano semanal, histórico e treino em curso são guardados na tabela privada `user_training_state`, protegida por Row Level Security. Agendamentos guardados anteriormente por data são convertidos automaticamente para o dia da semana correspondente.
