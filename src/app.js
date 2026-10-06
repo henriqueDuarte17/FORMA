@@ -628,11 +628,57 @@ document.addEventListener('click', async (event) => {
     showToast('Treino guardado. Cada sessão conta.');
   } else if (action === 'clear-demo') {
     showModal('Remover dados de exemplo?', 'As sessões de demonstração serão removidas da tua conta. Os teus treinos registados ficam intactos.', 'Remover exemplos', async () => {
+      const previousHistory = state.history;
       state.history = state.history.filter((workout) => !workout.isDemo);
       const saved = await saveState();
+      if (!saved) state.history = previousHistory;
       activeTab = 'profile';
       render();
       if (saved) showToast('Dados de exemplo removidos.');
+    });
+  } else if (action === 'clear-account-data') {
+    showModal('Apagar todos os dados de treino?', 'O histórico, o treino em curso, as predefinições e a agenda serão apagados. A tua conta continuará ativa e esta ação não pode ser anulada.', 'Apagar todos os dados', async () => {
+      try {
+        await persistenceQueue;
+        localStorage.removeItem('forma-training-v1');
+        const { error } = await supabase
+          .from('user_training_state')
+          .delete()
+          .eq('user_id', user.id);
+        if (error) throw error;
+        state = { history: [], activeWorkout: null, templates: [], schedule: [], storageError: false };
+        editingTemplate = null;
+        activeTab = 'profile';
+        render();
+        showToast('Todos os dados de treino foram apagados.');
+      } catch (error) {
+        console.error('Não foi possível apagar os dados desta conta.', error);
+        showToast(`Não foi possível apagar os dados: ${error.message || 'tenta novamente.'}`);
+      }
+    });
+  } else if (action === 'delete-account') {
+    showModal('Apagar a conta permanentemente?', 'A tua conta Supabase e todos os dados associados serão apagados. Não será possível recuperar a conta. Esta ação é irreversível.', 'Apagar a conta', async () => {
+      try {
+        await persistenceQueue;
+        localStorage.removeItem('forma-training-v1');
+        const { error } = await supabase.functions.invoke('delete-account', { method: 'POST' });
+        if (error) throw error;
+        const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
+        if (signOutError) {
+          throw new Error(`A conta foi apagada, mas não foi possível limpar a sessão deste dispositivo: ${signOutError.message}`);
+        }
+        user = null;
+        state = { history: [], activeWorkout: null, templates: [], schedule: [], storageError: false };
+        editingTemplate = null;
+        activeTab = 'home';
+        authMode = 'login';
+        authMessage = 'A tua conta e os dados associados foram apagados.';
+        authMessageType = 'status';
+        render();
+      } catch (error) {
+        console.error('Não foi possível apagar esta conta.', error);
+        showToast(`Não foi possível apagar a conta: ${error.message || 'verifica a configuração da função no Supabase.'}`);
+      }
     });
   } else if (action === 'retry-save') {
     await saveState();

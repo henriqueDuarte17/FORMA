@@ -14,6 +14,7 @@ FORMA é uma aplicação web de registo de treinos, pensada primeiro para o tele
 - `src/views/calendar.js` — calendário mensal reutilizado no histórico e na agenda.
 - `src/views/schedule.js` — planeamento semanal recorrente e início rápido da sessão do dia.
 - `src/views/templates.js` — seleção e edição das predefinições de treino.
+- `supabase/functions/delete-account/` — eliminação autenticada de contas pelo Supabase Edge Functions.
 - `styles/main.css` — ponto de entrada dos estilos.
 - `styles/base.css`, `styles/components.css`, `styles/workout.css`, `styles/progress.css`, `styles/templates.css` e `styles/responsive.css` — estilos organizados por responsabilidade.
 
@@ -29,8 +30,9 @@ FORMA é uma aplicação web de registo de treinos, pensada primeiro para o tele
 
 1. Instala as dependências com `npm install`.
 2. Copia `.env.example` para `.env.local` e preenche a URL do projeto Supabase e a chave pública `anon`/`publishable` (nunca uses uma `service_role` no browser).
-3. Executa o SQL de `supabase/schema.sql` no SQL Editor do teu projeto Supabase.
-4. Inicia a aplicação com `npm run dev` e abre o endereço local apresentado pelo Vite.
+3. Executa o SQL de `supabase/schema.sql` no SQL Editor do teu projeto Supabase. Se já configuraste a base de dados, volta a executar o ficheiro para ativar a política que permite apagar os dados da própria conta.
+4. Para disponibilizar a eliminação permanente de contas, instala e autentica o Supabase CLI, associa a pasta ao projeto (`supabase link`) e publica a função com `supabase functions deploy delete-account`. A função valida a sessão e usa `SUPABASE_SERVICE_ROLE_KEY` apenas no servidor Supabase; nunca coloques essa chave no `.env.local`, na Vercel ou no frontend.
+5. Inicia a aplicação com `npm run dev` e abre o endereço local apresentado pelo Vite.
 
 Ativa Email/Password em **Authentication → Providers** no Supabase. Se a confirmação de email estiver ligada, confirma o endereço antes de iniciar sessão. Os dados locais existentes são migrados para a primeira conta que iniciar sessão neste navegador, apenas quando essa conta ainda não tem dados remotos.
 
@@ -50,6 +52,7 @@ Ativa Email/Password em **Authentication → Providers** no Supabase. Se a confi
 - Resumo final com exercícios realizados e duração, sem métricas agregadas de séries ou carga.
 - Feedback visual de evolução ao superar a carga ou as repetições da última sessão real do mesmo exercício.
 - Registo e início de sessão por email e palavra-passe, com sincronização da conta e separação dos dados por utilizador.
+- Contas novas começam sem sessões de demonstração nem predefinições; o perfil permite remover exemplos antigos, apagar os dados de treino mantendo a conta ou eliminar permanentemente a conta e os dados associados.
 - Estados vazios, feedback de sucesso/erro, confirmação de término e layout responsivo com navegação adaptada a uma mão.
 
 ## Preparado para a próxima fase

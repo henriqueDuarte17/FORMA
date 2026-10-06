@@ -28,5 +28,12 @@ create policy "Users can update their training state"
   using ((select auth.uid()) = user_id)
   with check ((select auth.uid()) = user_id);
 
+drop policy if exists "Users can delete their training state" on public.user_training_state;
+create policy "Users can delete their training state"
+  on public.user_training_state
+  for delete
+  to authenticated
+  using ((select auth.uid()) = user_id);
+
 revoke all on public.user_training_state from anon;
-grant select, insert, update on public.user_training_state to authenticated;
+grant select, insert, update, delete on public.user_training_state to authenticated;

@@ -18,36 +18,6 @@ export const ICONS = {
   default: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12h10M4 9v6m16-6v6M7 8v8m10-8v8"/></svg>'
 };
 
-function sampleDate(daysAgo) {
-  const date = new Date();
-  date.setHours(12, 0, 0, 0);
-  date.setDate(date.getDate() - daysAgo);
-  return date.toISOString();
-}
-
-export function createDemoHistory() {
-  return [
-    { id: 'demo-1', name: 'Treino A · Corpo inteiro', date: sampleDate(2), duration: 48, sets: 12, isDemo: true, exercises: [
-      { id: 'leg-press', sets: [{ weight: 75, reps: 10 }, { weight: 75, reps: 10 }, { weight: 80, reps: 10 }] },
-      { id: 'chest-press', sets: [{ weight: 32, reps: 10 }, { weight: 32, reps: 10 }, { weight: 35, reps: 10 }] },
-      { id: 'seated-row', sets: [{ weight: 30, reps: 12 }, { weight: 30, reps: 12 }, { weight: 32, reps: 12 }] },
-      { id: 'shoulder-press', sets: [{ weight: 8, reps: 10 }, { weight: 10, reps: 10 }, { weight: 10, reps: 10 }] }
-    ] },
-    { id: 'demo-2', name: 'Treino A · Corpo inteiro', date: sampleDate(5), duration: 51, sets: 12, isDemo: true, exercises: [
-      { id: 'leg-press', sets: [{ weight: 70, reps: 10 }, { weight: 75, reps: 10 }, { weight: 75, reps: 10 }] },
-      { id: 'chest-press', sets: [{ weight: 30, reps: 10 }, { weight: 32, reps: 10 }, { weight: 32, reps: 10 }] },
-      { id: 'seated-row', sets: [{ weight: 27, reps: 12 }, { weight: 30, reps: 12 }, { weight: 30, reps: 12 }] },
-      { id: 'shoulder-press', sets: [{ weight: 8, reps: 10 }, { weight: 8, reps: 10 }, { weight: 10, reps: 10 }] }
-    ] },
-    { id: 'demo-3', name: 'Treino A · Corpo inteiro', date: sampleDate(9), duration: 54, sets: 12, isDemo: true, exercises: [
-      { id: 'leg-press', sets: [{ weight: 65, reps: 10 }, { weight: 70, reps: 10 }, { weight: 70, reps: 10 }] },
-      { id: 'chest-press', sets: [{ weight: 27, reps: 10 }, { weight: 30, reps: 10 }, { weight: 30, reps: 10 }] },
-      { id: 'seated-row', sets: [{ weight: 25, reps: 12 }, { weight: 27, reps: 12 }, { weight: 27, reps: 12 }] },
-      { id: 'shoulder-press', sets: [{ weight: 6, reps: 10 }, { weight: 8, reps: 10 }, { weight: 8, reps: 10 }] }
-    ] }
-  ];
-}
-
 function normalizeState(savedState) {
   if (!savedState || !Array.isArray(savedState.history)) {
     throw new Error('Os dados guardados na conta têm um formato inválido.');
@@ -63,9 +33,9 @@ function normalizeState(savedState) {
 
 function createInitialState() {
   return {
-    history: createDemoHistory(),
+    history: [],
     activeWorkout: null,
-    templates: [createDefaultTemplate()],
+    templates: [],
     schedule: [],
     storageError: false
   };

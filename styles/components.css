@@ -64,6 +64,11 @@
 .account-email span { color: var(--muted); font-size: 10px; }
 .account-email strong { overflow-wrap: anywhere; font-size: 13px; }
 .profile-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.profile-data-actions { display: grid; gap: 10px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.profile-data-actions h2 { font-size: 16px; }
+.profile-data-actions p { margin: 0; }
+.profile-data-actions .danger-button { width: 100%; }
+.profile-data-actions.is-destructive { border-color: #65403e; }
 .auth-page { min-height: min(720px, calc(100vh - 150px)); display: grid; place-items: center; padding: 24px 0; }
 .auth-card { width: min(100%, 440px); padding: 28px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); box-shadow: 0 20px 70px #0003; }
 .auth-mark { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 22px; border-radius: 13px; background: var(--lime); color: #171a12; font: 800 24px Manrope, sans-serif; }
