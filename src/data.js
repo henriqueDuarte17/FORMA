@@ -1,3 +1,4 @@
+import { supabase } from './supabase.js';
 export const STORAGE_KEY = 'forma-training-v1';
 export const REST_SECONDS = 90;
 

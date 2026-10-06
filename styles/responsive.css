@@ -1,5 +1,5 @@
 @media (min-width: 740px) {
-  .app-shell { padding-bottom: 28px; }
+  .app-shell { padding-bottom: 0; }
   .bottom-nav { position: static; min-height: 66px; padding: 8px 0; border-top: 1px solid var(--line); }
   .nav-item { min-width: 110px; grid-auto-flow: column; gap: 8px; font-size: 12px; }
   .toast { bottom: 26px; }
@@ -7,8 +7,8 @@
   .modal-backdrop { align-items: center; }
 }
 @media (max-width: 680px) {
-  .topbar { height: 62px; padding: 0 18px; }
-  .main-content { padding: 21px 16px 36px; }
+  .topbar { position: fixed; z-index: 10; top: 0; right: 0; left: 0; height: calc(62px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 18px 0; border-bottom: 1px solid #292c25; background: #141512ed; backdrop-filter: blur(16px); }
+  .main-content { padding: calc(83px + env(safe-area-inset-top)) 16px 36px; }
   .bottom-nav { gap: 0; }
   .nav-item { min-width: 0; flex: 1; }
   .hero { min-height: 238px; padding: 26px 23px; }
