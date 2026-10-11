@@ -27,7 +27,7 @@
   .today-label { font-size: 10px; }
 }
 @media (max-width: 370px) {
-  .set-row { grid-template-columns: 32px 1fr 1fr 28px; gap: 6px; padding: 8px 7px; }
+  .set-row { grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; padding: 8px 7px; }
   .set-field input { padding: 0 5px; font-size: 13px; }
   .set-number { width: 27px; height: 27px; }
   .exercise-heading h2 { font-size: 19px; }

@@ -1,7 +1,7 @@
 import { EXERCISE_MAP, ICONS, findMatchingExercise, findPreviousWorkout } from '../data.js';
 import { escapeHtml, formatDate, formatTime, elapsedSeconds, countCompletedSets, countWorkoutSets } from '../utils.js';
 
-export function renderWorkout({ app, state, errorBanner, startClock }) {
+export function renderWorkout({ app, state, errorBanner, startClock, editingSetIndex }) {
   const workout = state.activeWorkout;
   if (!workout) return;
 
@@ -40,6 +40,13 @@ export function renderWorkout({ app, state, errorBanner, startClock }) {
   const primaryLabel = isExerciseDone ? nextAction : `Concluir série ${nextOpenSet + 1}`;
   const previousSets = previousEntry?.sets || [];
   const workoutProgress = Math.round(overallComplete / overallTotal * 100);
+  const availableExercises = [
+    ...Object.values(EXERCISE_MAP),
+    ...(state.exerciseCatalog || [])
+  ].filter((item, index, exercises) =>
+    exercises.findIndex((candidate) => candidate.id === item.id) === index
+    && !workout.exercises.some((other, otherIndex) =>
+      otherIndex < workout.exerciseIndex && other.id === item.id));
 
   app.innerHTML = `<section class="workout-page">
     ${errorBanner()}
@@ -50,7 +57,18 @@ export function renderWorkout({ app, state, errorBanner, startClock }) {
     <div class="progress-track" role="progressbar" aria-label="Progresso do treino" aria-valuenow="${workoutProgress}" aria-valuemin="0" aria-valuemax="100"><span style="width:${workoutProgress}%"></span></div>
     <div class="exercise-heading">
       <span class="exercise-icon">${ICONS[detail.icon] || ICONS.default}</span>
-      <div><h2>${escapeHtml(detail.name)}</h2><p>${escapeHtml(detail.detail)} · ${exercise.sets.length} × ${detail.reps} alvo</p></div>
+      <div class="exercise-heading-main">
+        <h2>${escapeHtml(detail.name)}</h2>
+        <p>${escapeHtml(detail.detail)} · ${exercise.sets.length} × ${detail.reps} alvo</p>
+        <label class="template-field workout-exercise-switch">Trocar exercício
+          <select data-workout-exercise aria-label="Trocar exercício" ${completeCount ? 'disabled' : ''}>
+            ${availableExercises.map((item) =>
+              `<option value="${escapeHtml(item.id)}" ${item.id === exercise.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`
+            ).join('')}
+          </select>
+        </label>
+        ${completeCount ? '<span class="workout-switch-hint">Só podes trocar antes de registar séries.</span>' : ''}
+      </div>
       <span class="exercise-count">${workout.exerciseIndex + 1}<span class="exercise-count-total"> / ${workout.exercises.length}</span></span>
     </div>
     <div class="previous-card">
@@ -70,10 +88,16 @@ export function renderWorkout({ app, state, errorBanner, startClock }) {
     <div class="sets-label"><h3>Séries</h3><span>${completeCount} de ${exercise.sets.length} concluídas</span></div>
     <div class="set-list">${exercise.sets.map((set, index) => `
       <div class="set-row ${set.complete ? 'is-complete' : ''}" data-set-row="${index}">
-        <span class="set-number">${set.complete ? '✓' : String(index + 1).padStart(2, '0')}</span>
-        <div class="set-field"><label for="weight-${index}">Peso · kg</label><input id="weight-${index}" data-field="weight" data-index="${index}" type="number" inputmode="decimal" min="0" max="999" step="0.5" value="${escapeHtml(set.weight)}" ${set.complete ? 'disabled' : ''} aria-label="Peso da série ${index + 1}, em quilogramas"></div>
-        <div class="set-field"><label for="reps-${index}">Repetições</label><input id="reps-${index}" data-field="reps" data-index="${index}" type="number" inputmode="numeric" min="1" max="999" step="1" value="${escapeHtml(set.reps)}" ${set.complete ? 'disabled' : ''} aria-label="Repetições da série ${index + 1}"></div>
-        <span class="set-check" aria-label="${set.complete ? 'Série concluída' : 'Por fazer'}">${set.complete ? '✓' : '·'}</span>
+        ${editingSetIndex === index
+          ? '<span class="set-number">✎</span>'
+          : `<span class="set-number">${set.complete ? '✓' : String(index + 1).padStart(2, '0')}</span>`}
+        <div class="set-field"><label for="weight-${index}">Peso · kg</label><input id="weight-${index}" data-field="weight" data-index="${index}" type="number" inputmode="decimal" min="0" max="999" step="0.5" value="${escapeHtml(set.weight)}" ${set.complete && editingSetIndex !== index ? 'disabled' : ''} aria-label="Peso da série ${index + 1}, em quilogramas"></div>
+        <div class="set-field"><label for="reps-${index}">Repetições</label><input id="reps-${index}" data-field="reps" data-index="${index}" type="number" inputmode="numeric" min="1" max="999" step="1" value="${escapeHtml(set.reps)}" ${set.complete && editingSetIndex !== index ? 'disabled' : ''} aria-label="Repetições da série ${index + 1}"></div>
+        ${editingSetIndex === index
+          ? `<div class="set-edit-actions"><button class="set-edit-button" data-action="save-edited-set" data-index="${index}">Guardar</button><button class="set-edit-button is-cancel" data-action="cancel-edit-set">Cancelar</button></div>`
+          : set.complete
+            ? `<button class="set-edit-button" data-action="edit-completed-set" data-index="${index}" aria-label="Editar série ${index + 1}">Editar</button>`
+            : '<span class="set-check" aria-label="Por fazer">·</span>'}
       </div>`).join('')}</div>
     ${isResting ? `<section class="rest-card" aria-live="polite">
       <div class="rest-caption">Descansa. O teu próximo esforço espera.</div><div class="rest-clock" id="rest-clock">${formatTime(Math.max(0, Math.ceil((workout.restEndsAt - Date.now()) / 1000)))}</div>

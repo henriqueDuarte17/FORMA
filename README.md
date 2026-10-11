@@ -48,7 +48,8 @@ Ativa Email/Password em **Authentication → Providers** no Supabase. Se a confi
 - Recuperação de um treino em curso após atualizar a página ou fechar e reabrir o separador.
 - Visualização do exercício atual, objetivo de séries/repetições e registos da sessão anterior.
 - Campos de peso e repetições pré-preenchidos com os valores da predefinição escolhida e validados em cada série.
-- Registo de séries, descanso cronometrado de 90 segundos com opção para avançar e passagem para o exercício seguinte.
+- Registo de séries, substituição do exercício atual antes de registar séries e correção de séries já concluídas.
+- Descanso cronometrado configurável entre 15 e 600 segundos nas preferências do perfil, com opção para avançar e passagem para o exercício seguinte.
 - Conclusão, resumo e histórico persistente dos treinos.
 - Resumo final com exercícios realizados e duração, sem métricas agregadas de séries ou carga.
 - Feedback visual de evolução ao superar a carga ou as repetições da última sessão real do mesmo exercício.

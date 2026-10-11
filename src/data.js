@@ -1,5 +1,7 @@
 import { supabase } from './supabase.js';
 export const REST_SECONDS = 90;
+const MIN_REST_SECONDS = 15;
+const MAX_REST_SECONDS = 600;
 
 export const PROGRAM = [
   { id: 'leg-press', name: 'Leg press', detail: 'Máquina · Quadríceps', sets: 3, reps: 10, weight: 80, icon: 'legs' },
@@ -45,6 +47,11 @@ function normalizeState(savedState) {
   (savedState.activeWorkout?.exercises || []).forEach(addExercise);
   return {
     ...savedState,
+    restSeconds: Number.isInteger(savedState.restSeconds)
+      && savedState.restSeconds >= MIN_REST_SECONDS
+      && savedState.restSeconds <= MAX_REST_SECONDS
+      ? savedState.restSeconds
+      : REST_SECONDS,
     templates,
     exerciseCatalog: [...exerciseCatalog.values()],
     schedule: normalizeWeeklySchedule(savedState.schedule, templates),
@@ -59,6 +66,7 @@ function createInitialState() {
     templates: [],
     exerciseCatalog: [],
     schedule: [],
+    restSeconds: REST_SECONDS,
     storageError: false
   };
 }
@@ -115,7 +123,8 @@ export async function persistState(state, userId) {
         activeWorkout: state.activeWorkout,
         templates: state.templates,
         exerciseCatalog: state.exerciseCatalog,
-        schedule: state.schedule
+        schedule: state.schedule,
+        restSeconds: state.restSeconds
       },
       updated_at: new Date().toISOString()
     }, { onConflict: 'user_id' });

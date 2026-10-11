@@ -9,6 +9,14 @@ export function renderProfile({ app, state, errorBanner, user }) {
     <p>Os teus treinos estão guardados de forma privada na tua conta Supabase e associados ao teu email.</p>
     <div class="account-email"><span>Email</span><strong>${escapeHtml(user.email)}</strong></div>
     <p>${state.history.length} sessões guardadas · ${ownWorkouts} treinos teus</p>
+    <form class="profile-data-actions" data-preferences-form>
+      <h2>Preferências de treino</h2>
+      <p>Define quanto tempo queres descansar entre séries. Podes ajustar este valor quando quiseres.</p>
+      <label class="template-field" for="rest-seconds">Tempo de descanso · segundos
+        <input id="rest-seconds" name="rest-seconds" type="number" min="15" max="600" step="1" required value="${escapeHtml(state.restSeconds)}" inputmode="numeric">
+      </label>
+      <button class="primary-button" type="submit">Guardar preferências</button>
+    </form>
     <section class="profile-data-actions" aria-label="Gestão dos dados">
       <h2>Gerir dados</h2>
       <p>Remove os exemplos ou apaga os dados de treino guardados nesta conta.</p>

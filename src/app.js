@@ -16,10 +16,11 @@ const elements = {
   todayLabel: document.querySelector('#today-label')
 };
 
-let state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], storageError: false };
+let state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], restSeconds: REST_SECONDS, storageError: false };
 let user = null;
 let activeTab = 'home';
 let editingTemplate = null;
+let editingSetIndex = null;
 let selectedHistoryDate = dateKey();
 let historyMonth = new Date();
 let authMode = 'login';
@@ -57,6 +58,7 @@ async function startTemplate(templateId) {
     return;
   }
   state.activeWorkout = createWorkout(state.history, template);
+  editingSetIndex = null;
   await saveState();
   activeTab = 'workout';
   render();
@@ -265,7 +267,7 @@ function render() {
     else button.removeAttribute('aria-current');
   });
 
-  const context = { app: elements.app, state, errorBanner, startClock, user };
+  const context = { app: elements.app, state, errorBanner, startClock, user, editingSetIndex };
   if (activeTab === 'workout' && state.activeWorkout) renderWorkout(context);
   else if (activeTab === 'progress') renderProgress({ ...context, selectedHistoryDate, historyMonth });
   else if (activeTab === 'templates') renderTemplates({ ...context, editingTemplate });
@@ -377,7 +379,7 @@ async function saveCurrentSet() {
   exercise.sets[index] = { weight, reps, complete: true };
   const lastSetOfWorkout = workout.exerciseIndex === workout.exercises.length - 1
     && index === exercise.sets.length - 1;
-  if (!lastSetOfWorkout) workout.restEndsAt = Date.now() + REST_SECONDS * 1000;
+  if (!lastSetOfWorkout) workout.restEndsAt = Date.now() + (state.restSeconds || REST_SECONDS) * 1000;
 
   const saved = await saveState();
   render();
@@ -400,6 +402,7 @@ async function advanceWorkout() {
   }
 
   workout.restEndsAt = null;
+  editingSetIndex = null;
   if (workout.exerciseIndex < workout.exercises.length - 1) {
     workout.exerciseIndex += 1;
     await saveState();
@@ -424,9 +427,108 @@ async function leaveRest(skipRest) {
   }
 }
 
+async function replaceActiveExercise(exerciseId) {
+  const workout = state.activeWorkout;
+  const current = activeExercise();
+  if (!workout || !current) return;
+  if (current.sets.some((set) => set.complete)) {
+    showToast('Só podes trocar o exercício antes de registar séries.');
+    render();
+    return;
+  }
+  const replacement = EXERCISE_MAP[exerciseId]
+    || state.exerciseCatalog.find((item) => item.id === exerciseId);
+  if (!replacement) {
+    showToast('Este exercício já não está disponível.');
+    render();
+    return;
+  }
+  const plannedIndex = workout.exercises.findIndex((item, index) =>
+    index > workout.exerciseIndex && item.id === replacement.id);
+  if (plannedIndex >= 0) {
+    workout.exercises[workout.exerciseIndex] = workout.exercises[plannedIndex];
+    workout.exercises[plannedIndex] = current;
+    editingSetIndex = null;
+    const saved = await saveState();
+    render();
+    if (saved) showToast(`Agora vais fazer ${replacement.name}.`);
+    return;
+  }
+  const previousWorkout = state.history
+    .filter((item) => !item.isDemo)
+    .slice()
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .find((item) => findMatchingExercise(item, replacement.id, replacement.name));
+  const previousExercise = previousWorkout
+    ? findMatchingExercise(previousWorkout, replacement.id, replacement.name)
+    : null;
+  const previousLastSet = previousExercise?.sets?.[previousExercise.sets.length - 1];
+  const initialWeight = Number(replacement.weight)
+    || Number(current.sets[0]?.weight)
+    || Number(current.weight)
+    || 0;
+  const targetReps = Number(replacement.reps) || Number(current.reps);
+  workout.exercises[workout.exerciseIndex] = {
+    ...replacement,
+    reps: targetReps,
+    weight: initialWeight,
+    sets: Array.from({ length: current.sets.length }, (_, index) => {
+      const previousSet = previousExercise?.sets?.[index] || previousLastSet;
+      return {
+        weight: previousSet ? Number(previousSet.weight) : initialWeight,
+        reps: previousSet ? Number(previousSet.reps) : targetReps,
+        complete: false
+      };
+    })
+  };
+  editingSetIndex = null;
+  const saved = await saveState();
+  render();
+  if (saved) showToast(`${replacement.name} substituiu ${current.name}.`);
+}
+
+async function saveEditedSet(index) {
+  const exercise = activeExercise();
+  const set = exercise?.sets[index];
+  if (!set?.complete) return;
+  const weightInput = document.querySelector(`#weight-${index}`);
+  const repsInput = document.querySelector(`#reps-${index}`);
+  const weight = Number(weightInput?.value);
+  const reps = Number(repsInput?.value);
+  if (!Number.isFinite(weight) || weight < 0 || weight > 999) {
+    showToast('Introduz um peso válido entre 0 e 999 kg.');
+    weightInput?.focus();
+    return;
+  }
+  if (!Number.isInteger(reps) || reps < 1 || reps > 999) {
+    showToast('Introduz um número de repetições entre 1 e 999.');
+    repsInput?.focus();
+    return;
+  }
+  exercise.sets[index] = { ...set, weight, reps };
+  editingSetIndex = null;
+  const saved = await saveState();
+  render();
+  if (saved) showToast('Série atualizada.');
+}
+
+async function savePreferences(form) {
+  if (!form.reportValidity()) return;
+  const restSeconds = Number(form.elements.namedItem('rest-seconds').value);
+  if (!Number.isInteger(restSeconds) || restSeconds < 15 || restSeconds > 600) {
+    showToast('Escolhe um descanso entre 15 e 600 segundos.');
+    return;
+  }
+  state.restSeconds = restSeconds;
+  const saved = await saveState();
+  render();
+  if (saved) showToast('Preferências de treino guardadas.');
+}
+
 async function activateUser(nextUser) {
   const nextState = await loadState(nextUser.id);
   state = nextState;
+  editingSetIndex = null;
   user = nextUser;
   authMessage = '';
   authMessageType = 'status';
@@ -510,6 +612,8 @@ elements.app.addEventListener('change', (event) => {
       editingTemplate = { ...draft, exercises: draft.exercises };
       render();
     }
+  } else if (event.target.matches('[data-workout-exercise]')) {
+    replaceActiveExercise(event.target.value);
   }
 });
 
@@ -523,6 +627,9 @@ elements.app.addEventListener('submit', async (event) => {
   } else if (event.target.matches('[data-schedule-form]')) {
     event.preventDefault();
     saveWeeklySchedule(event.target);
+  } else if (event.target.matches('[data-preferences-form]')) {
+    event.preventDefault();
+    savePreferences(event.target);
   }
 });
 
@@ -626,6 +733,15 @@ document.addEventListener('click', async (event) => {
     const exercise = activeExercise();
     if (exercise?.sets.every((set) => set.complete)) await advanceWorkout();
     else await saveCurrentSet();
+  } else if (action === 'edit-completed-set') {
+    editingSetIndex = Number(actionElement.dataset.index);
+    render();
+    elements.app.querySelector(`#reps-${editingSetIndex}`)?.focus();
+  } else if (action === 'save-edited-set') {
+    await saveEditedSet(Number(actionElement.dataset.index));
+  } else if (action === 'cancel-edit-set') {
+    editingSetIndex = null;
+    render();
   } else if (action === 'continue-after-rest' || action === 'skip-rest') {
     await leaveRest(action === 'skip-rest');
   } else if (action === 'end-early') {
@@ -662,7 +778,7 @@ document.addEventListener('click', async (event) => {
           .delete()
           .eq('user_id', user.id);
         if (error) throw error;
-        state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], storageError: false };
+        state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], restSeconds: REST_SECONDS, storageError: false };
         editingTemplate = null;
         activeTab = 'profile';
         render();
@@ -684,7 +800,7 @@ document.addEventListener('click', async (event) => {
           throw new Error(`A conta foi apagada, mas não foi possível limpar a sessão deste dispositivo: ${signOutError.message}`);
         }
         user = null;
-        state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], storageError: false };
+        state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], restSeconds: REST_SECONDS, storageError: false };
         editingTemplate = null;
         activeTab = 'home';
         authMode = 'login';
@@ -709,7 +825,7 @@ document.addEventListener('click', async (event) => {
       return;
     }
     user = null;
-    state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], storageError: false };
+    state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], restSeconds: REST_SECONDS, storageError: false };
     activeTab = 'home';
     authMode = 'login';
     authMessage = '';
@@ -750,7 +866,7 @@ if (supabase) {
   supabase.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_OUT' && user) {
       user = null;
-      state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], storageError: false };
+      state = { history: [], activeWorkout: null, templates: [], exerciseCatalog: [], schedule: [], restSeconds: REST_SECONDS, storageError: false };
       activeTab = 'home';
       authMode = 'login';
       authMessage = '';
